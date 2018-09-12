@@ -1,6 +1,6 @@
-namespace tpl_dotnet
+﻿namespace Sable
 {
-    public class ServiceOptions
+    public class ServiceHostOptions
     {
         public bool IsDevelopment { get; set; }
         public string[] Arguments { get; set; }

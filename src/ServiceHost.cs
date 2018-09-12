@@ -1,4 +1,4 @@
-namespace tpl_dotnet
+﻿namespace Sable
 {
     using System;
     using System.IO;
@@ -7,38 +7,48 @@ namespace tpl_dotnet
     using Autofac;
     using Microsoft.AspNetCore.Hosting;
     using Microsoft.Extensions.Configuration;
+    using Microsoft.Extensions.Options;
     using Microsoft.Extensions.Logging;
     using Microsoft.Extensions.DependencyInjection;
     using Serilog;
     using Microsoft.AspNetCore.HostFiltering;
-    using Microsoft.Extensions.Options;
     using System.Threading;
+    using Autofac.Extensions.DependencyInjection;
+    using Serilog.Exceptions;
 
-    public class Service : IDisposable
+    public class ServiceHost : IDisposable
     {
-        public Service(ServiceOptions options = null)
+        public ServiceHost(ServiceHostOptions options = null)
         {
-            Logger = ConfigureLogger(options?.FallbackLogger);
+            var baseLogger = ConfigureLogger(options?.FallbackLogger);
+            logger = baseLogger.ForContext<ServiceHost>();
 
-            if (options?.IsDevelopment ?? false) Logger.Warning("Development mode is enabled");
+            if (options?.IsDevelopment ?? false)
+                logger.Warning("Development mode is enabled");
 
-            Logger.Debug("Loading configuration");
+            logger.Debug("Loading configuration");
             configuration = LoadConfiguration(
                 options?.IsDevelopment ?? false,
                 options?.Arguments
             );
 
-            Logger.Debug("Building DI container");
-            container = BuildRootContainer(Logger, configuration);
+            logger.Debug("Building DI container");
+            container = BuildRootContainer(baseLogger, configuration);
         }
 
-        public Serilog.ILogger Logger { get; }
+        private readonly Serilog.ILogger logger;
         private readonly IContainer container;
         private readonly IConfiguration configuration;
 
         private static Serilog.ILogger ConfigureLogger(Serilog.ILogger fallbackLogger)
         {
             return new Serilog.LoggerConfiguration()
+                .Enrich.FromLogContext()
+                .Enrich.WithMachineName()
+                .Enrich.WithProcessId()
+                .Enrich.WithThreadId()
+                .Enrich.WithExceptionDetails()
+                // .Enrich.WithDemystifiedStackTraces()
                 .WriteTo.Logger(fallbackLogger)
                 .CreateLogger();
         }
@@ -46,6 +56,7 @@ namespace tpl_dotnet
         private static IConfiguration LoadConfiguration(bool isDevelopment, string[] args)
         {
             var builder = new ConfigurationBuilder()
+                .SetBasePath(Directory.GetCurrentDirectory())
                 .AddJsonFile("appsettings.json", optional: true, reloadOnChange: true)
                 .AddEnvironmentVariables();
 
@@ -61,11 +72,14 @@ namespace tpl_dotnet
 
         private static IContainer BuildRootContainer(Serilog.ILogger logger, IConfiguration configuration)
         {
-            var di = new ContainerBuilder();
-            di.RegisterInstance(logger).AsImplementedInterfaces();
-            di.RegisterInstance(configuration).AsImplementedInterfaces();
+            var builder = new ContainerBuilder();
 
-            return di.Build();
+            builder.RegisterInstance(logger).AsImplementedInterfaces();
+            builder.RegisterInstance(configuration).AsImplementedInterfaces();
+            builder.AddOptions();
+            builder.AddConsulNamingService(configuration.GetSection("ns"));
+
+            return builder.Build();
         }
 
         public async Task StartWebHostAsync(CancellationToken token = default(CancellationToken))
@@ -75,7 +89,7 @@ namespace tpl_dotnet
                 builder.RegisterType<Startup>().AsSelf();
             }
 
-            Logger.Information("Starting Web host");
+            logger.Information("Starting Web host");
             using (var webHostScope = container.BeginLifetimeScope(WebContainerBuild))
             {
                 var webHost = new WebHostBuilder()
@@ -113,7 +127,7 @@ namespace tpl_dotnet
                     {
                         options.ValidateScopes = hostingContext.HostingEnvironment.IsDevelopment();
                     })
-                    .UseSerilog(Logger)
+                    .UseSerilog(webHostScope.Resolve<Serilog.ILogger>())
                     .Build();
 
                 await webHost.RunAsync(token);

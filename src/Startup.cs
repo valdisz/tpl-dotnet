@@ -1,4 +1,4 @@
-﻿namespace tpl_dotnet
+﻿namespace Sable
 {
     using System;
     using System.Collections.Generic;
@@ -14,13 +14,15 @@
 
     public class Startup
     {
-        public Startup(ILifetimeScope webHostScope)
+        public Startup(ILifetimeScope webHostScope, Serilog.ILogger logger)
         {
             this.webHostScope = webHostScope;
+            this.logger = logger.ForContext<Startup>();
         }
 
         private readonly ILifetimeScope webHostScope;
         private ILifetimeScope aspNetScope;
+        private readonly Serilog.ILogger logger;
 
         public IServiceProvider ConfigureServices(IServiceCollection services)
         {
@@ -38,7 +40,9 @@
 
         private void ConfigureAppLifetime(IApplicationLifetime appLifetime)
         {
-            appLifetime.ApplicationStopped.Register(() => aspNetScope.Dispose());
+            appLifetime.ApplicationStarted.Register(() => OnApplicationStarted(appLifetime));
+            appLifetime.ApplicationStopping.Register(OnApplicationStopping);
+            appLifetime.ApplicationStopped.Register(OnApplicationStopped);
         }
 
         private static void ConfigurePiepine(IApplicationBuilder app, IHostingEnvironment env)
@@ -54,6 +58,31 @@
             {
                 await context.Response.WriteAsync("Hello World!");
             });
+        }
+
+        private void OnApplicationStarted(IApplicationLifetime appLifetime)
+        {
+            try
+            {
+                var ns = aspNetScope.Resolve<INamingService>();
+                ns.RegisterAsync().Wait();
+            }
+            catch (Exception ex)
+            {
+                logger.Fatal(ex, "Could not register service withing Naming Service, will terminate");
+                appLifetime.StopApplication();
+            }
+        }
+
+        private void OnApplicationStopping()
+        {
+            var ns = aspNetScope.Resolve<INamingService>();
+            ns.UnregisterAsync().Wait();
+        }
+
+        private void OnApplicationStopped()
+        {
+            aspNetScope.Dispose();
         }
     }
 }
