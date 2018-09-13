@@ -18,6 +18,7 @@
         public static async Task<int> Main(string[] args)
         {
             var consoleLogger = new Serilog.LoggerConfiguration()
+                .MinimumLevel.Verbose()
                 .WriteTo.Console(
                     theme: AnsiConsoleTheme.Literate,
                     outputTemplate: "[{Timestamp:HH:mm:ss} {Level:u3}] {SourceContext} {Message:lj}{NewLine}{Exception}")

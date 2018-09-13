@@ -47,7 +47,7 @@
 
         private static void ConfigurePiepine(IApplicationBuilder app, IHostingEnvironment env)
         {
-            // app.UseHostFiltering();
+            app.UseHostFiltering();
 
             if (env.IsDevelopment())
             {
@@ -69,7 +69,7 @@
             }
             catch (Exception ex)
             {
-                logger.Fatal(ex, "Could not register service withing Naming Service, will terminate");
+                logger.Fatal(ex, "Could not register service within Naming Service, will terminate");
                 appLifetime.StopApplication();
             }
         }
@@ -77,7 +77,7 @@
         private void OnApplicationStopping()
         {
             var ns = aspNetScope.Resolve<INamingService>();
-            ns.UnregisterAsync().Wait();
+            ns.DeregisterAsync().Wait();
         }
 
         private void OnApplicationStopped()

@@ -15,6 +15,10 @@
     using System.Threading;
     using Autofac.Extensions.DependencyInjection;
     using Serilog.Exceptions;
+    using System.Collections.Generic;
+    using System.Net;
+    using System.Net.Sockets;
+    using System.Diagnostics;
 
     public class ServiceHost : IDisposable
     {
@@ -36,6 +40,13 @@
             container = BuildRootContainer(baseLogger, configuration);
         }
 
+        public const string PROP_PROTOCOL = "protocol";
+        public const string PROP_PORT = "port";
+        public const string PROP_INTERFACE = "interface";
+        public const string PROP_HOSTNAME = "hostname";
+        public const string PROP_SERVICE_IP = "serviceIp";
+        public const string PROP_PID = "pid";
+
         private readonly Serilog.ILogger logger;
         private readonly IContainer container;
         private readonly IConfiguration configuration;
@@ -43,6 +54,7 @@
         private static Serilog.ILogger ConfigureLogger(Serilog.ILogger fallbackLogger)
         {
             return new Serilog.LoggerConfiguration()
+                .MinimumLevel.Verbose()
                 .Enrich.FromLogContext()
                 .Enrich.WithMachineName()
                 .Enrich.WithProcessId()
@@ -57,6 +69,13 @@
         {
             var builder = new ConfigurationBuilder()
                 .SetBasePath(Directory.GetCurrentDirectory())
+                .AddInMemoryCollection(new Dictionary<string, string> {
+                    { PROP_PROTOCOL, "http" },
+                    { PROP_PORT, "5000" },
+                    { PROP_INTERFACE, "0.0.0.0" },
+                    { PROP_HOSTNAME, System.Environment.MachineName },
+                    { PROP_SERVICE_IP, GetLocalIPAddress() }
+                })
                 .AddJsonFile("appsettings.json", optional: true, reloadOnChange: true)
                 .AddEnvironmentVariables();
 
@@ -67,7 +86,35 @@
                 builder.AddUserSecrets(appAssembly, optional: true);
             }
 
-            return builder.Build();
+            builder.AddInMemoryCollection(new Dictionary<string, string> {
+                { PROP_PID, Process.GetCurrentProcess().Id.ToString() }
+            });
+
+            var config = builder.Build();
+
+            var protocol = config.GetValue<string>("protocol");
+            var port = config.GetValue<int>("port");
+            var @interface = config.GetValue<string>("interface");
+            return new ConfigurationBuilder()
+                .AddInMemoryCollection(new Dictionary<string, string> {
+                    { "urls", $"{protocol}://{@interface}:{port}" }
+                })
+                .AddConfiguration(config)
+                .Build();
+        }
+
+        private static string GetLocalIPAddress()
+        {
+            var host = Dns.GetHostEntry(Dns.GetHostName());
+            foreach (var ip in host.AddressList)
+            {
+                if (ip.AddressFamily == AddressFamily.InterNetwork)
+                {
+                    return ip.ToString();
+                }
+            }
+
+            throw new Exception("No network adapters with an IPv4 address in the system!");
         }
 
         private static IContainer BuildRootContainer(Serilog.ILogger logger, IConfiguration configuration)
@@ -77,7 +124,7 @@
             builder.RegisterInstance(logger).AsImplementedInterfaces();
             builder.RegisterInstance(configuration).AsImplementedInterfaces();
             builder.AddOptions();
-            builder.AddConsulNamingService(configuration.GetSection("ns"));
+            builder.AddConsulNamingService(configuration);
 
             return builder.Build();
         }

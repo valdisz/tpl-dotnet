@@ -64,5 +64,28 @@ namespace Sable
         public static ContainerBuilder Configure<TOptions>(this ContainerBuilder builder, IConfiguration config, Action<BinderOptions> configureBinder)
             where TOptions : class
             => builder.Configure<TOptions>(Options.DefaultName, config, configureBinder);
+
+        public static ContainerBuilder PostConfigure<TOptions>(this ContainerBuilder builder, string name, Action<TOptions> configureOptions)
+            where TOptions : class
+        {
+            if (builder == null)
+            {
+                throw new ArgumentNullException(nameof(builder));
+            }
+
+            if (configureOptions == null)
+            {
+                throw new ArgumentNullException(nameof(configureOptions));
+            }
+
+            builder.Register(ctx => new PostConfigureOptions<TOptions>(name, configureOptions))
+                .As<IPostConfigureOptions<TOptions>>()
+                .SingleInstance();
+
+            return builder;
+        }
+
+        public static ContainerBuilder PostConfigure<TOptions>(this ContainerBuilder builder, Action<TOptions> configureOptions) where TOptions : class
+            => builder.PostConfigure(Options.DefaultName, configureOptions);
     }
 }
