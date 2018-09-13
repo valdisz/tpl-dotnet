@@ -1,4 +1,4 @@
-﻿namespace tpl_dotnet
+﻿namespace Sable
 {
     using System;
     using System.Collections.Generic;
@@ -11,21 +11,26 @@
     using Serilog;
     using Microsoft.AspNetCore.Hosting.Internal;
     using clipr;
+    using Serilog.Sinks.SystemConsole.Themes;
 
     public class Program
     {
         public static async Task<int> Main(string[] args)
         {
             var consoleLogger = new Serilog.LoggerConfiguration()
-                .WriteTo.Console()
+                .MinimumLevel.Verbose()
+                .WriteTo.Console(
+                    theme: AnsiConsoleTheme.Literate,
+                    outputTemplate: "[{Timestamp:HH:mm:ss} {Level:u3}] {SourceContext} {Message:lj}{NewLine}{Exception}")
                 .CreateLogger();
+            var logger = consoleLogger.ForContext<Program>();
 
             try
             {
-                consoleLogger.Information("Starting up");
+                logger.Information("Starting up");
                 var options = ParseArguments(args);
 
-                using (var instance = new Service(new ServiceOptions
+                using (var instance = new ServiceHost(new ServiceHostOptions
                 {
                     IsDevelopment = options.IsDevelopment,
                     Arguments = args,
@@ -38,7 +43,7 @@
             }
             catch (Exception ex)
             {
-                consoleLogger.Fatal(ex, "Web host terminated unexpectedly");
+                logger.Fatal(ex, "Web host terminated unexpectedly");
                 return 1;
             }
         }

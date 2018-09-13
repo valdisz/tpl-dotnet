@@ -3,6 +3,7 @@
   <PropertyGroup>
     <TargetFramework>netcoreapp2.1</TargetFramework>
     <LangVersion>latest</LangVersion>
+    <DefaultNamespace>Sable</DefaultNamespace>
   </PropertyGroup>
 
   <ItemGroup>
@@ -11,9 +12,14 @@
     <PackageReference Include="autofac" Version="4.8.1" />
     <PackageReference Include="Autofac.Extensions.DependencyInjection" Version="4.3.0" />
     <PackageReference Include="clipr" Version="1.6.1" />
+    <PackageReference Include="Consul" Version="0.7.2.6" />
     <PackageReference Include="Microsoft.AspNetCore.App" />
     <PackageReference Include="serilog" Version="2.7.1" />
     <PackageReference Include="Serilog.AspNetCore" Version="2.1.1" />
+    <PackageReference Include="Serilog.Enrichers.Environment" Version="2.1.2" />
+    <PackageReference Include="Serilog.Enrichers.Process" Version="2.0.1" />
+    <PackageReference Include="Serilog.Enrichers.Thread" Version="3.0.0" />
+    <PackageReference Include="Serilog.Exceptions" Version="4.1.0" />
     <PackageReference Include="Serilog.Sinks.Console" Version="3.1.1" />
   </ItemGroup>
 

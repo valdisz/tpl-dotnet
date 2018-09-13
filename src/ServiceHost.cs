@@ -1,4 +1,4 @@
-namespace tpl_dotnet
+﻿namespace Sable
 {
     using System;
     using System.IO;
@@ -7,38 +7,60 @@ namespace tpl_dotnet
     using Autofac;
     using Microsoft.AspNetCore.Hosting;
     using Microsoft.Extensions.Configuration;
+    using Microsoft.Extensions.Options;
     using Microsoft.Extensions.Logging;
     using Microsoft.Extensions.DependencyInjection;
     using Serilog;
     using Microsoft.AspNetCore.HostFiltering;
-    using Microsoft.Extensions.Options;
     using System.Threading;
+    using Autofac.Extensions.DependencyInjection;
+    using Serilog.Exceptions;
+    using System.Collections.Generic;
+    using System.Net;
+    using System.Net.Sockets;
+    using System.Diagnostics;
 
-    public class Service : IDisposable
+    public class ServiceHost : IDisposable
     {
-        public Service(ServiceOptions options = null)
+        public ServiceHost(ServiceHostOptions options = null)
         {
-            Logger = ConfigureLogger(options?.FallbackLogger);
+            var baseLogger = ConfigureLogger(options?.FallbackLogger);
+            logger = baseLogger.ForContext<ServiceHost>();
 
-            if (options?.IsDevelopment ?? false) Logger.Warning("Development mode is enabled");
+            if (options?.IsDevelopment ?? false)
+                logger.Warning("Development mode is enabled");
 
-            Logger.Debug("Loading configuration");
+            logger.Debug("Loading configuration");
             configuration = LoadConfiguration(
                 options?.IsDevelopment ?? false,
                 options?.Arguments
             );
 
-            Logger.Debug("Building DI container");
-            container = BuildRootContainer(Logger, configuration);
+            logger.Debug("Building DI container");
+            container = BuildRootContainer(baseLogger, configuration);
         }
 
-        public Serilog.ILogger Logger { get; }
+        public const string PROP_PROTOCOL = "protocol";
+        public const string PROP_PORT = "port";
+        public const string PROP_INTERFACE = "interface";
+        public const string PROP_HOSTNAME = "hostname";
+        public const string PROP_SERVICE_IP = "serviceIp";
+        public const string PROP_PID = "pid";
+
+        private readonly Serilog.ILogger logger;
         private readonly IContainer container;
         private readonly IConfiguration configuration;
 
         private static Serilog.ILogger ConfigureLogger(Serilog.ILogger fallbackLogger)
         {
             return new Serilog.LoggerConfiguration()
+                .MinimumLevel.Verbose()
+                .Enrich.FromLogContext()
+                .Enrich.WithMachineName()
+                .Enrich.WithProcessId()
+                .Enrich.WithThreadId()
+                .Enrich.WithExceptionDetails()
+                // .Enrich.WithDemystifiedStackTraces()
                 .WriteTo.Logger(fallbackLogger)
                 .CreateLogger();
         }
@@ -46,6 +68,14 @@ namespace tpl_dotnet
         private static IConfiguration LoadConfiguration(bool isDevelopment, string[] args)
         {
             var builder = new ConfigurationBuilder()
+                .SetBasePath(Directory.GetCurrentDirectory())
+                .AddInMemoryCollection(new Dictionary<string, string> {
+                    { PROP_PROTOCOL, "http" },
+                    { PROP_PORT, "5000" },
+                    { PROP_INTERFACE, "0.0.0.0" },
+                    { PROP_HOSTNAME, System.Environment.MachineName },
+                    { PROP_SERVICE_IP, GetLocalIPAddress() }
+                })
                 .AddJsonFile("appsettings.json", optional: true, reloadOnChange: true)
                 .AddEnvironmentVariables();
 
@@ -56,16 +86,47 @@ namespace tpl_dotnet
                 builder.AddUserSecrets(appAssembly, optional: true);
             }
 
-            return builder.Build();
+            builder.AddInMemoryCollection(new Dictionary<string, string> {
+                { PROP_PID, Process.GetCurrentProcess().Id.ToString() }
+            });
+
+            var config = builder.Build();
+
+            var protocol = config.GetValue<string>("protocol");
+            var port = config.GetValue<int>("port");
+            var @interface = config.GetValue<string>("interface");
+            return new ConfigurationBuilder()
+                .AddInMemoryCollection(new Dictionary<string, string> {
+                    { "urls", $"{protocol}://{@interface}:{port}" }
+                })
+                .AddConfiguration(config)
+                .Build();
+        }
+
+        private static string GetLocalIPAddress()
+        {
+            var host = Dns.GetHostEntry(Dns.GetHostName());
+            foreach (var ip in host.AddressList)
+            {
+                if (ip.AddressFamily == AddressFamily.InterNetwork)
+                {
+                    return ip.ToString();
+                }
+            }
+
+            throw new Exception("No network adapters with an IPv4 address in the system!");
         }
 
         private static IContainer BuildRootContainer(Serilog.ILogger logger, IConfiguration configuration)
         {
-            var di = new ContainerBuilder();
-            di.RegisterInstance(logger).AsImplementedInterfaces();
-            di.RegisterInstance(configuration).AsImplementedInterfaces();
+            var builder = new ContainerBuilder();
 
-            return di.Build();
+            builder.RegisterInstance(logger).AsImplementedInterfaces();
+            builder.RegisterInstance(configuration).AsImplementedInterfaces();
+            builder.AddOptions();
+            builder.AddConsulNamingService(configuration);
+
+            return builder.Build();
         }
 
         public async Task StartWebHostAsync(CancellationToken token = default(CancellationToken))
@@ -75,7 +136,7 @@ namespace tpl_dotnet
                 builder.RegisterType<Startup>().AsSelf();
             }
 
-            Logger.Information("Starting Web host");
+            logger.Information("Starting Web host");
             using (var webHostScope = container.BeginLifetimeScope(WebContainerBuild))
             {
                 var webHost = new WebHostBuilder()
@@ -113,7 +174,7 @@ namespace tpl_dotnet
                     {
                         options.ValidateScopes = hostingContext.HostingEnvironment.IsDevelopment();
                     })
-                    .UseSerilog(Logger)
+                    .UseSerilog(webHostScope.Resolve<Serilog.ILogger>())
                     .Build();
 
                 await webHost.RunAsync(token);

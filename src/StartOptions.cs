@@ -1,4 +1,4 @@
-namespace tpl_dotnet
+namespace Sable
 {
     using clipr;
 

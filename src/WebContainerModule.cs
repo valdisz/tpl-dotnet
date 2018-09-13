@@ -1,4 +1,4 @@
-﻿namespace tpl_dotnet
+﻿namespace Sable
 {
     using Autofac;
     using Autofac.Extensions.DependencyInjection;
