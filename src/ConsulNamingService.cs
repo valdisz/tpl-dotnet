@@ -53,6 +53,7 @@ namespace Sable
                   needToRecreateRegistration
                 | !object.Equals(options.CheckInterval, newOptions.CheckInterval)
                 | !object.Equals(options.DeregisterTtl, newOptions.DeregisterTtl)
+                | !object.Equals(options.AccessKey, newOptions.AccessKey)
                 | !Enumerable.SequenceEqual(options.Tags ?? Enumerable.Empty<string>(), newOptions.Tags ?? Enumerable.Empty<string>());
             bool needToReconnect = !object.Equals(options.Address, newOptions.Address);
 
@@ -92,28 +93,44 @@ namespace Sable
             var protocol = options.Protocol;
             var serviceIp = options.ServiceIp;
 
-            this.logger.Information("Registering new service {ServiceName} instance on port {ServicePort} in Naming Service",
+            this.logger.Debug("Registering new service {ServiceName} instance on port {ServicePort} in Naming Service",
                 name,
                 port);
+
+            this.logger.Verbose("Will use {AccessKey} as access key for Health Endpoint", options.AccessKey);
 
             var serviceId = GetInstanceId(options);
             try
             {
+                var baseUrl = $"{protocol}://{serviceIp}:{port}";
                 var result = await client.Agent.ServiceRegister(new AgentServiceRegistration
                 {
                     ID = serviceId,
                     Name = name,
                     Port = port,
                     Tags = options.Tags ?? new string[0],
-                    Check = new AgentServiceCheck
-                    {
-                        HTTP = $"{protocol}://{serviceIp}:{port}/ping",
-                        Interval = options.CheckInterval ?? DEFAULT_CHECK_INTERVAL,
-                        DeregisterCriticalServiceAfter = options.DeregisterTtl ?? DEFAULT_DEREGISTER_TTL
-                    }
+                    Checks = new[] {
+                        new NamedAgentServiceCheck
+                        {
+                            Name = "ping",
+                            HTTP = $"{baseUrl}/ping",
+                            Interval = options.CheckInterval ?? DEFAULT_CHECK_INTERVAL,
+                            DeregisterCriticalServiceAfter = options.DeregisterTtl ?? DEFAULT_DEREGISTER_TTL
+                        },
+                        new NamedAgentServiceCheck
+                        {
+                            Name = "health",
+                            HTTP = $"{baseUrl}/health",
+                            Header = {
+                                { "X-ACCESS-KEY", new[] { options.AccessKey } }
+                            },
+                            Interval = options.CheckInterval ?? DEFAULT_CHECK_INTERVAL,
+                            DeregisterCriticalServiceAfter = options.DeregisterTtl ?? DEFAULT_DEREGISTER_TTL
+                        }
+                    },
                 }, token);
 
-                this.logger.Debug("Service instance registered in Naming Service with ID {ServiceId} in {Duration}ms",
+                this.logger.Information("Service instance registered in Naming Service with ID {ServiceId} in {Duration}ms",
                     serviceId,
                     result.RequestTime.TotalMilliseconds);
             }
@@ -127,14 +144,14 @@ namespace Sable
         private async Task DeregisterInternalAsync(ConsulClient client, NamingServiceOptions options, CancellationToken token = default(CancellationToken))
         {
             var serviceId = GetInstanceId(options);
-            this.logger.Information("Unregistering service {ServiceName} with ID {ServiceId} instance on port {ServicePort} from Naming Service",
+            this.logger.Debug("Unregistering service {ServiceName} with ID {ServiceId} instance on port {ServicePort} from Naming Service",
                 options.Name,
                 serviceId,
                 options.Port);
 
             var result = await client.Agent.ServiceDeregister(serviceId, token);
 
-            this.logger.Debug("Service instance with ID {ServiceId} deregistered from Naming Service in {Duration}ms",
+            this.logger.Information("Service instance with ID {ServiceId} deregistered from Naming Service in {Duration}ms",
                 serviceId,
                 result.RequestTime.TotalMilliseconds);
         }
@@ -143,16 +160,16 @@ namespace Sable
         {
             try
             {
-                this.logger.Debug("Acquiring write lock");
+                this.logger.Verbose("Acquiring write lock");
                 await semaphore.WaitAsync(token);
 
-                this.logger.Debug("Lock acquired");
+                this.logger.Verbose("Lock acquired");
                 await RegisterInternalAsync(consul, options, token);
             }
             finally
             {
                 semaphore.Release();
-                this.logger.Debug("Lock released");
+                this.logger.Verbose("Lock released");
             }
         }
 
@@ -160,16 +177,16 @@ namespace Sable
         {
             try
             {
-                this.logger.Debug("Acquiring write lock");
+                this.logger.Verbose("Acquiring write lock");
                 await semaphore.WaitAsync(token);
 
-                this.logger.Debug("Lock acquired");
+                this.logger.Verbose("Lock acquired");
                 await DeregisterInternalAsync(consul, options, token);
             }
             finally
             {
                 semaphore.Release();
-                this.logger.Debug("Lock released");
+                this.logger.Verbose("Lock released");
             }
         }
 

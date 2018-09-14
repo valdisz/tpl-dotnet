@@ -14,5 +14,6 @@ namespace Sable
         public string ServiceIp { get; set; }
         public Uri Address { get; set; }
         public string Protocol { get;  set; }
+        public string AccessKey { get; set; }
     }
 }
