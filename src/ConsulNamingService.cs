@@ -9,32 +9,42 @@ namespace Sable
     using System.Net;
     using System.Net.Sockets;
     using System.Linq;
+    using System.Collections.Generic;
 
     public class ConsulNamingService : INamingService, IDisposable
     {
-        public ConsulNamingService(Serilog.ILogger logger,
-            IOptions<NamingServiceOptions> options,
-            IOptionsMonitor<NamingServiceOptions> optionsMonitor)
+        public ConsulNamingService(
+            IAccessKeys accessKeys,
+            Serilog.ILogger logger,
+            IOptionsMonitor<NamingServiceOptions> options,
+            IOptionsMonitor<RuntimeOptions> runtime)
         {
             this.logger = logger.ForContext<ConsulNamingService>();
-            this.options = options.Value;
-            this.optionsMonitorCallback = optionsMonitor.OnChange(OnOptionsChange);
 
-            this.consul = CreateClient(this.options);
+            this.accessKeys = accessKeys;
+            this.options = (options.CurrentValue, runtime.CurrentValue);
+            this.optionsMonitorCallbacks = new List<IDisposable>
+            {
+                options.OnChange((opt, _) => OnOptionsChange((opt, this.options.runtime))),
+                runtime.OnChange((opt, _) => OnOptionsChange((this.options.ns, opt))),
+            };
+
+            this.consul = CreateClient(this.options.ns);
         }
 
-        static readonly TimeSpan DEFAULT_CHECK_INTERVAL = TimeSpan.FromSeconds(30);
-        static readonly TimeSpan DEFAULT_DEREGISTER_TTL = TimeSpan.FromSeconds(600);
-
         private readonly Serilog.ILogger logger;
-        private readonly IDisposable optionsMonitorCallback;
-        private NamingServiceOptions options;
+        private readonly List<IDisposable> optionsMonitorCallbacks;
+        private readonly IAccessKeys accessKeys;
+        private (NamingServiceOptions ns, RuntimeOptions runtime) options;
         private ConsulClient consul;
         private SemaphoreSlim semaphore = new SemaphoreSlim(1, 1);
         private bool disposed;
 
-        private static string GetInstanceId(NamingServiceOptions options)
-            => $"{options.Name}-{options.Hostname}-{options.Pid}-{options.Port}";
+        private static string GetInstanceId((NamingServiceOptions ns, RuntimeOptions runtime) opt)
+        {
+            var (ns, runtime) = opt;
+            return $"{ns.Name}-{runtime.Hostname}-{runtime.Pid}-{runtime.Port}";
+        }
 
         private static ConsulClient CreateClient(NamingServiceOptions options)
         {
@@ -46,16 +56,15 @@ namespace Sable
             return client;
         }
 
-        private void OnOptionsChange(NamingServiceOptions newOptions, string name)
+        private void OnOptionsChange((NamingServiceOptions ns, RuntimeOptions runtime) newOptions)
         {
-            bool needToRecreateRegistration = !object.Equals(options.Name, newOptions.Name);
+            bool needToRecreateRegistration = !object.Equals(options.ns.Name, newOptions.ns.Name);
+            bool needToReconnect = !object.Equals(options.ns.Address, newOptions.ns.Address);
             bool needToUpdateRegistration =
                   needToRecreateRegistration
-                | !object.Equals(options.CheckInterval, newOptions.CheckInterval)
-                | !object.Equals(options.DeregisterTtl, newOptions.DeregisterTtl)
-                | !object.Equals(options.AccessKey, newOptions.AccessKey)
-                | !Enumerable.SequenceEqual(options.Tags ?? Enumerable.Empty<string>(), newOptions.Tags ?? Enumerable.Empty<string>());
-            bool needToReconnect = !object.Equals(options.Address, newOptions.Address);
+                | needToReconnect
+                | newOptions != options
+                | !Enumerable.SequenceEqual(options.ns.Tags, newOptions.ns.Tags);
 
             if (!needToReconnect && !needToRecreateRegistration && !needToUpdateRegistration) return;
             this.logger.Warning("Naming Service options changed");
@@ -69,9 +78,9 @@ namespace Sable
                 }
 
                 if (needToReconnect) {
-                    this.logger.Information("Connecting to new Naming Service on {Address}", newOptions.Address);
+                    this.logger.Information("Connecting to new Naming Service on {Address}", newOptions.ns.Address);
                     consul.Dispose();
-                    consul = CreateClient(newOptions);
+                    consul = CreateClient(newOptions.ns);
                 }
 
                 if (needToUpdateRegistration) {
@@ -86,18 +95,23 @@ namespace Sable
             }
         }
 
-        private async Task RegisterInternalAsync(ConsulClient client, NamingServiceOptions options, CancellationToken token = default(CancellationToken))
+        private async Task RegisterInternalAsync(
+            ConsulClient client,
+            (NamingServiceOptions ns, RuntimeOptions runtime) options,
+            CancellationToken token = default(CancellationToken))
         {
-            var name = options.Name;
-            var port = options.Port;
-            var protocol = options.Protocol;
-            var serviceIp = options.ServiceIp;
+            var (ns, runtime) = options;
+            var name = ns.Name;
+            var port = runtime.Port;
+            var protocol = runtime.Protocol;
+            var serviceIp = runtime.ServiceIp;
+            var accessKey = accessKeys.Get("health");
 
             this.logger.Debug("Registering new service {ServiceName} instance on port {ServicePort} in Naming Service",
                 name,
                 port);
 
-            this.logger.Verbose("Will use {AccessKey} as access key for Health Endpoint", options.AccessKey);
+            this.logger.Verbose("Will use {AccessKey} as access key for Health Endpoint", accessKey);
 
             var serviceId = GetInstanceId(options);
             try
@@ -108,24 +122,24 @@ namespace Sable
                     ID = serviceId,
                     Name = name,
                     Port = port,
-                    Tags = options.Tags ?? new string[0],
+                    Tags = ns.Tags ?? new string[0],
                     Checks = new[] {
                         new NamedAgentServiceCheck
                         {
                             Name = "ping",
                             HTTP = $"{baseUrl}/ping",
-                            Interval = options.CheckInterval ?? DEFAULT_CHECK_INTERVAL,
-                            DeregisterCriticalServiceAfter = options.DeregisterTtl ?? DEFAULT_DEREGISTER_TTL
+                            Interval = ns.CheckInterval,
+                            DeregisterCriticalServiceAfter = ns.DeregisterTtl
                         },
                         new NamedAgentServiceCheck
                         {
                             Name = "health",
                             HTTP = $"{baseUrl}/health",
                             Header = {
-                                { "X-ACCESS-KEY", new[] { options.AccessKey } }
+                                { "X-ACCESS-KEY", new[] { accessKey } }
                             },
-                            Interval = options.CheckInterval ?? DEFAULT_CHECK_INTERVAL,
-                            DeregisterCriticalServiceAfter = options.DeregisterTtl ?? DEFAULT_DEREGISTER_TTL
+                            Interval = ns.CheckInterval,
+                            DeregisterCriticalServiceAfter = ns.DeregisterTtl
                         }
                     },
                 }, token);
@@ -141,13 +155,17 @@ namespace Sable
             }
         }
 
-        private async Task DeregisterInternalAsync(ConsulClient client, NamingServiceOptions options, CancellationToken token = default(CancellationToken))
+        private async Task DeregisterInternalAsync(
+            ConsulClient client,
+            (NamingServiceOptions ns, RuntimeOptions runtime) options,
+            CancellationToken token = default(CancellationToken))
         {
+            var (ns, runtime) = options;
             var serviceId = GetInstanceId(options);
             this.logger.Debug("Unregistering service {ServiceName} with ID {ServiceId} instance on port {ServicePort} from Naming Service",
-                options.Name,
+                ns.Name,
                 serviceId,
-                options.Port);
+                runtime.Port);
 
             var result = await client.Agent.ServiceDeregister(serviceId, token);
 
@@ -189,12 +207,13 @@ namespace Sable
                 this.logger.Verbose("Lock released");
             }
         }
-
-        public void Dispose()
+         public void Dispose()
         {
             if (disposed) return;
 
-            optionsMonitorCallback.Dispose();
+            foreach (var callback in optionsMonitorCallbacks)
+                callback.Dispose();
+
             consul.Dispose();
             semaphore.Dispose();
 

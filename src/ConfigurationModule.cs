@@ -12,36 +12,6 @@ namespace Sable
     using System.Net.Sockets;
     using System.Diagnostics;
     using Microsoft.Extensions.Primitives;
-    using Microsoft.Extensions.Configuration.Memory;
-
-    public interface IRuntimeConfiguration
-    {
-        void Set(string key, string value);
-        bool TryGet(string key, out string value);
-    }
-
-    public sealed class RuntimeConfiguration : IRuntimeConfiguration, IConfigurationSource
-    {
-        public RuntimeConfiguration()
-        {
-            source = new MemoryConfigurationSource();
-            provider = new MemoryConfigurationProvider(source);
-        }
-
-        private readonly MemoryConfigurationSource source;
-        private readonly MemoryConfigurationProvider provider;
-
-        public void Set(string key, string value)
-            => provider.Set(key, value);
-
-        public bool TryGet(string key, out string value)
-            => provider.TryGet(key, out value);
-
-        public IConfigurationProvider Build(IConfigurationBuilder builder)
-        {
-            return provider;
-        }
-    }
 
     public sealed class ConfigurationModule : Autofac.Module
     {
@@ -49,14 +19,6 @@ namespace Sable
         {
             this.args = args;
         }
-
-        public const string PROP_PROTOCOL = "protocol";
-        public const string PROP_PORT = "port";
-        public const string PROP_INTERFACE = "interface";
-        public const string PROP_HOSTNAME = "hostname";
-        public const string PROP_SERVICE_IP = "serviceIp";
-        public const string PROP_PID = "pid";
-        public const string PROP_DEVELOPMENT = "dev";
 
         private readonly string[] args;
 
@@ -78,6 +40,12 @@ namespace Sable
                 })
                 .As<IConfiguration>()
                 .SingleInstance();
+
+            builder.RegisterType<InMemoryAccessKeys>()
+                .As<IAccessKeys>()
+                .SingleInstance();
+
+            builder.Configure<RuntimeOptions>(config => config.GetSection(RuntimeOptions.SECTION));
         }
 
         private static IConfiguration LoadConfiguration(string[] args, IConfigurationSource runtimeConfiguration)
@@ -85,11 +53,11 @@ namespace Sable
             var builder = new ConfigurationBuilder()
                 .SetBasePath(Directory.GetCurrentDirectory())
                 .AddInMemoryCollection(new Dictionary<string, string> {
-                    { PROP_PROTOCOL, "http" },
-                    { PROP_PORT, "5000" },
-                    { PROP_INTERFACE, "0.0.0.0" },
-                    { PROP_HOSTNAME, System.Environment.MachineName },
-                    { PROP_SERVICE_IP, GetLocalIPAddress() }
+                    { $"{RuntimeOptions.SECTION}:{nameof(RuntimeOptions.Protocol)}", "http" },
+                    { $"{RuntimeOptions.SECTION}:{nameof(RuntimeOptions.Port)}", "5000" },
+                    { $"{RuntimeOptions.SECTION}:{nameof(RuntimeOptions.Interface)}", "0.0.0.0" },
+                    { $"{RuntimeOptions.SECTION}:{nameof(RuntimeOptions.Hostname)}", System.Environment.MachineName },
+                    { $"{RuntimeOptions.SECTION}:{nameof(RuntimeOptions.ServiceIp)}", GetLocalIPAddress() }
                 })
                 .AddJsonFile("appsettings.json", optional: true, reloadOnChange: true)
                 .AddEnvironmentVariables();
@@ -102,29 +70,28 @@ namespace Sable
                         args,
                         new Dictionary<string, string>
                         {
-                            { "d", PROP_DEVELOPMENT }
+                            { "d", $"{RuntimeOptions.SECTION}:{nameof(RuntimeOptions.Development)}" },
+                            { "dev", $"{RuntimeOptions.SECTION}:{nameof(RuntimeOptions.Development)}" }
                         })
                     .Build();
                 builder.AddConfiguration(cliConfig);
             }
 
-            if (cliConfig?.GetValue<bool>(PROP_DEVELOPMENT, false) ?? false) {
+            if (cliConfig?.GetSection(RuntimeOptions.SECTION)?.GetValue<bool>(nameof(RuntimeOptions.Development), false) ?? false) {
                 var appAssembly = Assembly.GetExecutingAssembly();
                 builder.AddUserSecrets(appAssembly, optional: true);
             }
 
             builder.AddInMemoryCollection(new Dictionary<string, string> {
-                { PROP_PID, Process.GetCurrentProcess().Id.ToString() }
+                { $"{RuntimeOptions.SECTION}:{nameof(RuntimeOptions.Pid)}", Process.GetCurrentProcess().Id.ToString() }
             });
 
             var config = builder.Build();
 
-            var protocol = config.GetValue<string>("protocol");
-            var port = config.GetValue<int>("port");
-            var @interface = config.GetValue<string>("interface");
+            var runtime = config.GetSection(RuntimeOptions.SECTION).Get<RuntimeOptions>();
             return new ConfigurationBuilder()
                 .AddInMemoryCollection(new Dictionary<string, string> {
-                    { "urls", $"{protocol}://{@interface}:{port}" }
+                    { "urls", $"{runtime.Protocol}://{runtime.Interface}:{runtime.Port}" }
                 })
                 .AddConfiguration(config)
                 .Add(runtimeConfiguration)

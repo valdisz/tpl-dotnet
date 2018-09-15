@@ -20,19 +20,19 @@
             Serilog.ILogger logger,
             IConfiguration configuration,
             IHealthRoot healthRoot,
-            IRuntimeConfiguration runtimeConfiguration)
+            IAccessKeys accessKeys)
         {
             this.webHostScope = webHostScope;
             this.configuration = configuration;
             this.healthRoot = healthRoot;
-            this.runtimeConfiguration = runtimeConfiguration;
+            this.accessKeys = accessKeys;
             this.logger = logger.ForContext<Startup>();
         }
 
         private readonly ILifetimeScope webHostScope;
         private readonly IConfiguration configuration;
         private readonly IHealthRoot healthRoot;
-        private readonly IRuntimeConfiguration runtimeConfiguration;
+        private readonly IAccessKeys accessKeys;
         private ILifetimeScope aspNetScope;
         private readonly Serilog.ILogger logger;
 
@@ -49,7 +49,7 @@
         public void Configure(IApplicationBuilder app, IHostingEnvironment env, IApplicationLifetime appLifetime)
         {
             ConfigureAppLifetime(appLifetime);
-            ConfigurePiepine(app, env, runtimeConfiguration);
+            ConfigurePiepine(app, env, accessKeys);
         }
 
         private void ConfigureAppLifetime(IApplicationLifetime appLifetime)
@@ -59,7 +59,7 @@
             appLifetime.ApplicationStopped.Register(OnApplicationStopped);
         }
 
-        private static void ConfigurePiepine(IApplicationBuilder app, IHostingEnvironment env, IRuntimeConfiguration runtimeConfiguration)
+        private static void ConfigurePiepine(IApplicationBuilder app, IHostingEnvironment env, IAccessKeys accessKeys)
         {
             app.UseHostFiltering();
 
@@ -70,10 +70,7 @@
 
             app.UsePingEndpoint();
 
-            string accessKey = Guid.NewGuid().ToString("N");
-            runtimeConfiguration.Set("access-key", accessKey);
-
-            app.UseRequireAccessKey("/health", accessKey);
+            app.UseRequireAccessKey("/health", accessKeys.Create("health"));
             app.UseHealthEndpoint();
 
             app.Run(async (context) =>
