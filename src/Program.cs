@@ -28,11 +28,9 @@
             try
             {
                 logger.Information("Starting up");
-                var options = ParseArguments(args);
 
                 using (var instance = new ServiceHost(new ServiceHostOptions
                 {
-                    IsDevelopment = options.IsDevelopment,
                     Arguments = args,
                     FallbackLogger = consoleLogger
                 }))
@@ -46,13 +44,6 @@
                 logger.Fatal(ex, "Web host terminated unexpectedly");
                 return 1;
             }
-        }
-
-        public static StartOptions ParseArguments(string[] args)
-        {
-            return CliParser.TryParse<StartOptions>(args, out var options)
-                ? options
-                : new StartOptions();
         }
     }
 }

@@ -8,7 +8,9 @@
 
   <ItemGroup>
     <PackageReference Include="App.Metrics" Version="2.1.0" />
+    <PackageReference Include="App.Metrics.AspNetCore.Health.Endpoints" Version="2.0.0" />
     <PackageReference Include="App.Metrics.Health" Version="2.0.0" />
+    <PackageReference Include="App.Metrics.Health.Checks.Process" Version="2.0.0" />
     <PackageReference Include="autofac" Version="4.8.1" />
     <PackageReference Include="Autofac.Extensions.DependencyInjection" Version="4.3.0" />
     <PackageReference Include="clipr" Version="1.6.1" />

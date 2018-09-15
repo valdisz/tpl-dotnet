@@ -4,6 +4,7 @@
     using System.Collections.Generic;
     using System.Linq;
     using System.Threading.Tasks;
+    using App.Metrics.Health;
     using Autofac;
     using Autofac.Extensions.DependencyInjection;
     using Microsoft.AspNetCore.Builder;
@@ -14,19 +15,32 @@
 
     public class Startup
     {
-        public Startup(ILifetimeScope webHostScope, Serilog.ILogger logger)
+        public Startup(
+            ILifetimeScope webHostScope,
+            Serilog.ILogger logger,
+            IConfiguration configuration,
+            IHealthRoot healthRoot,
+            IAccessKeys accessKeys)
         {
             this.webHostScope = webHostScope;
+            this.configuration = configuration;
+            this.healthRoot = healthRoot;
+            this.accessKeys = accessKeys;
             this.logger = logger.ForContext<Startup>();
         }
 
         private readonly ILifetimeScope webHostScope;
+        private readonly IConfiguration configuration;
+        private readonly IHealthRoot healthRoot;
+        private readonly IAccessKeys accessKeys;
         private ILifetimeScope aspNetScope;
         private readonly Serilog.ILogger logger;
 
         public IServiceProvider ConfigureServices(IServiceCollection services)
         {
             services.AddMvc().AddControllersAsServices();
+            services.AddHealth(healthRoot);
+            services.AddHealthEndpoints(configuration.GetSection("health"));
 
             aspNetScope = webHostScope.BeginLifetimeScope(builder => builder.Populate(services));
             return new AutofacServiceProvider(aspNetScope);
@@ -35,7 +49,7 @@
         public void Configure(IApplicationBuilder app, IHostingEnvironment env, IApplicationLifetime appLifetime)
         {
             ConfigureAppLifetime(appLifetime);
-            ConfigurePiepine(app, env);
+            ConfigurePiepine(app, env, accessKeys);
         }
 
         private void ConfigureAppLifetime(IApplicationLifetime appLifetime)
@@ -45,7 +59,7 @@
             appLifetime.ApplicationStopped.Register(OnApplicationStopped);
         }
 
-        private static void ConfigurePiepine(IApplicationBuilder app, IHostingEnvironment env)
+        private static void ConfigurePiepine(IApplicationBuilder app, IHostingEnvironment env, IAccessKeys accessKeys)
         {
             app.UseHostFiltering();
 
@@ -53,6 +67,11 @@
             {
                 app.UseDeveloperExceptionPage();
             }
+
+            app.UsePingEndpoint();
+
+            app.UseRequireAccessKey("/health", accessKeys.Create("health"));
+            app.UseHealthEndpoint();
 
             app.Run(async (context) =>
             {
