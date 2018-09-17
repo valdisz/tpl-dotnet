@@ -13,19 +13,9 @@
         {
             if (options == null) throw new ArgumentNullException(nameof(options));
             logger = options.FallbackLogger.ForContext<ServiceHost>();
+
             logger.Debug("Building DI container");
-
-            var builder = new ContainerBuilder();
-
-            builder.AddOptions();
-            builder.AddConsulNamingService();
-            builder.RegisterModule(new LoggerModule(logger));
-            builder.RegisterModule(new ConfigurationModule(options.Arguments));
-            builder.RegisterModule(new HealthChecksModule());
-            builder.RegisterModule(new WebHostModule());
-            builder.RegisterModule(new GraphQLModule());
-
-            container = builder.Build();
+            container = BuildContainer(options.Arguments);
 
             logger = container
                 .Resolve<Serilog.ILogger>()
@@ -34,6 +24,21 @@
 
         private readonly Serilog.ILogger logger;
         private readonly IContainer container;
+
+        private IContainer BuildContainer(string[] args)
+        {
+            var builder = new ContainerBuilder();
+
+            builder.AddOptions();
+            builder.AddConsulNamingService();
+            builder.RegisterModule(new LoggerModule(logger));
+            builder.RegisterModule(new ConfigurationModule(args));
+            builder.RegisterModule(new HealthChecksModule());
+            builder.RegisterModule(new WebHostModule());
+            builder.RegisterModule(new GraphQLModule());
+
+            return builder.Build();
+        }
 
         public async Task StartWebHostAsync(CancellationToken token = default(CancellationToken))
         {
