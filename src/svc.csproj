@@ -13,7 +13,6 @@
     <PackageReference Include="App.Metrics.Health.Checks.Process" Version="2.0.0" />
     <PackageReference Include="autofac" Version="4.8.1" />
     <PackageReference Include="Autofac.Extensions.DependencyInjection" Version="4.3.0" />
-    <PackageReference Include="clipr" Version="1.6.1" />
     <PackageReference Include="Consul" Version="0.7.2.6" />
     <PackageReference Include="GraphQL.Conventions" Version="1.4.0" />
     <PackageReference Include="Microsoft.AspNetCore.App" />

@@ -1,16 +1,8 @@
 ﻿namespace Sable
 {
     using System;
-    using System.Collections.Generic;
-    using System.Linq;
     using System.Threading.Tasks;
-    using Microsoft.AspNetCore;
-    using Microsoft.Extensions.DependencyInjection;
-    using Microsoft.AspNetCore.HostFiltering;
-    using Microsoft.Extensions.Options;
     using Serilog;
-    using Microsoft.AspNetCore.Hosting.Internal;
-    using clipr;
     using Serilog.Sinks.SystemConsole.Themes;
 
     public class Program
