@@ -73,6 +73,8 @@
             app.UseRequireAccessKey("/health", accessKeys.Create("health"));
             app.UseHealthEndpoint();
 
+            app.UseGraphQL();
+
             app.Run(async (context) =>
             {
                 await context.Response.WriteAsync("Hello World!");
