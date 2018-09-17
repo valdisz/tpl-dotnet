@@ -20,6 +20,10 @@ namespace Sable
             this.args = args;
         }
 
+        public const string DEFAULT_PROTOCOL = "http";
+        public const string DEFAULT_INTERFACE = "0.0.0.0";
+        public const int DEFAULT_PORT = 5000;
+
         private readonly string[] args;
 
         protected override void Load(ContainerBuilder builder)
@@ -53,9 +57,9 @@ namespace Sable
             var builder = new ConfigurationBuilder()
                 .SetBasePath(Directory.GetCurrentDirectory())
                 .AddInMemoryCollection(new Dictionary<string, string> {
-                    { $"{RuntimeOptions.SECTION}:{nameof(RuntimeOptions.Protocol)}", "http" },
-                    { $"{RuntimeOptions.SECTION}:{nameof(RuntimeOptions.Port)}", "5000" },
-                    { $"{RuntimeOptions.SECTION}:{nameof(RuntimeOptions.Interface)}", "0.0.0.0" },
+                    { $"{RuntimeOptions.SECTION}:{nameof(RuntimeOptions.Protocol)}", DEFAULT_PROTOCOL },
+                    { $"{RuntimeOptions.SECTION}:{nameof(RuntimeOptions.Port)}", DEFAULT_PORT.ToString() },
+                    { $"{RuntimeOptions.SECTION}:{nameof(RuntimeOptions.Interface)}", DEFAULT_INTERFACE },
                     { $"{RuntimeOptions.SECTION}:{nameof(RuntimeOptions.Hostname)}", System.Environment.MachineName },
                     { $"{RuntimeOptions.SECTION}:{nameof(RuntimeOptions.ServiceIp)}", GetLocalIPAddress() }
                 })
@@ -70,8 +74,10 @@ namespace Sable
                         args,
                         new Dictionary<string, string>
                         {
-                            { "d", $"{RuntimeOptions.SECTION}:{nameof(RuntimeOptions.Development)}" },
-                            { "dev", $"{RuntimeOptions.SECTION}:{nameof(RuntimeOptions.Development)}" }
+                            { "-d", $"{RuntimeOptions.SECTION}:{nameof(RuntimeOptions.Development)}" },
+                            { "--dev", $"{RuntimeOptions.SECTION}:{nameof(RuntimeOptions.Development)}" },
+                            { "-p", $"{RuntimeOptions.SECTION}:{nameof(RuntimeOptions.Port)}" },
+                            { "--port", $"{RuntimeOptions.SECTION}:{nameof(RuntimeOptions.Port)}" }
                         })
                     .Build();
                 builder.AddConfiguration(cliConfig);

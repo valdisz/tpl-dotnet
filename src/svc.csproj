@@ -15,6 +15,7 @@
     <PackageReference Include="Autofac.Extensions.DependencyInjection" Version="4.3.0" />
     <PackageReference Include="clipr" Version="1.6.1" />
     <PackageReference Include="Consul" Version="0.7.2.6" />
+    <PackageReference Include="GraphQL.Conventions" Version="1.4.0" />
     <PackageReference Include="Microsoft.AspNetCore.App" />
     <PackageReference Include="serilog" Version="2.7.1" />
     <PackageReference Include="Serilog.AspNetCore" Version="2.1.1" />
