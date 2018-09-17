@@ -35,7 +35,7 @@
             builder.RegisterModule(new ConfigurationModule(args));
             builder.RegisterModule(new HealthChecksModule());
             builder.RegisterModule(new WebHostModule());
-            builder.RegisterModule(new GraphQLModule());
+            builder.RegisterModule(new GraphQLModule<Query, Mutation>());
 
             return builder.Build();
         }
