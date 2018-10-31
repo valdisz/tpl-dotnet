@@ -11,10 +11,13 @@ namespace Sable
     using Serilog;
     using Microsoft.AspNetCore.HostFiltering;
 
-    public sealed class WebHostModule : Autofac.Module
+    public sealed class WebHostModule<TStartup> : Autofac.Module
+        where TStartup: class
     {
         protected override void Load(ContainerBuilder builder)
         {
+            builder.RegisterType<TStartup>().AsSelf();
+
             builder.Register(ctx =>
             {
                 var configuration = ctx.Resolve<IConfiguration>();
@@ -27,9 +30,9 @@ namespace Sable
                         options.Configure(builderContext.Configuration.GetSection("Kestrel")))
                     .ConfigureAppConfiguration((builderContext, config) =>
                         config.AddConfiguration(configuration))
-                    .UseStartup<Startup>()
+                    .UseStartup<TStartup>()
                     .ConfigureServices((hostingContext, services) => {
-                        services.AddTransient(provider => ctx.Resolve<Startup>());
+                        services.AddTransient(provider => ctx.Resolve<TStartup>());
 
                         // Fallback
                         services.PostConfigure<HostFilteringOptions>(options =>

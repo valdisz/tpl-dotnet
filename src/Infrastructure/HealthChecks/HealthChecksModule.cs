@@ -3,14 +3,6 @@ namespace Sable
     using Autofac;
     using App.Metrics.Health.Builder;
     using App.Metrics.Health;
-    using System;
-
-    public interface IHealthEndpoint
-    {
-        string Name { get; }
-        Uri RelativeUri { get; }
-        (string name, string[] values)[] Headers { get; }
-    }
 
     public sealed class HealthChecksModule : Autofac.Module
     {

@@ -2,6 +2,7 @@
 {
     using System;
     using System.Threading.Tasks;
+    using Autofac;
     using Serilog;
     using Serilog.Sinks.SystemConsole.Themes;
 
@@ -21,13 +22,21 @@
             {
                 logger.Information("Starting up");
 
-                using (var instance = new ServiceHost(new ServiceHostOptions
+                var options = new ServiceHostOptions
                 {
                     Arguments = args,
                     FallbackLogger = consoleLogger
+                };
+
+                using (var hostInstance = new ServiceHost(options, builder =>
+                {
+                    builder.AddConsulNamingService();
+                    builder.AddHealthChecks();
+                    builder.AddWebHost<Startup>();
+                    builder.AddGrapqhQL<Query, Mutation>();
                 }))
                 {
-                    await instance.StartWebHostAsync();
+                    await hostInstance.StartWebHostAsync();
                     return 0;
                 }
             }
