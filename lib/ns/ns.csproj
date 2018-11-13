@@ -1,0 +1,16 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>netcoreapp2.1</TargetFramework>
+    <DefaultNamespace>Sable</DefaultNamespace>
+    <LangVersion>latest</LangVersion>
+  </PropertyGroup>
+
+  <PropertyGroup>
+    <PackageId>Sable.NamingService</PackageId>
+    <Version>1.0.0</Version>
+    <Authors>Valdis Zobēla</Authors>
+    <Company>Sable SIA</Company>
+  </PropertyGroup>
+
+</Project>

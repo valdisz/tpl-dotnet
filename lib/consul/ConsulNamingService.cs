@@ -11,6 +11,11 @@ namespace Sable
     using System.Linq;
     using System.Collections.Generic;
 
+    public class ConsulChannel
+    {
+        
+    }
+
     public class ConsulNamingService : INamingService, IDisposable
     {
         public ConsulNamingService(
@@ -36,9 +41,10 @@ namespace Sable
         private readonly List<IDisposable> optionsMonitorCallbacks;
         private readonly IAccessKeys accessKeys;
         private (NamingServiceOptions ns, RuntimeOptions runtime) options;
-        private ConsulClient consul;
         private SemaphoreSlim semaphore = new SemaphoreSlim(1, 1);
         private bool disposed;
+
+        public ConsulClient consul { get; }
 
         private static string GetInstanceId((NamingServiceOptions ns, RuntimeOptions runtime) opt)
         {

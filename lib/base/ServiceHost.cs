@@ -3,9 +3,8 @@
     using System;
     using System.Threading.Tasks;
     using Autofac;
-    using Microsoft.AspNetCore.Hosting;
     using System.Threading;
-    using Autofac.Extensions.DependencyInjection;
+    // using Autofac.Extensions.DependencyInjection;
     using Serilog;
 
     public sealed class ServiceHost : IDisposable
